@@ -149,44 +149,6 @@ def test_extract_dois_with_missing_doi(headers: dict[str, str]) -> None:
         search._extract_dois(papers)
 
 
-def test_find_original_paper(headers: dict[str, str], sample_papers: list[Paper]) -> None:
-    """DOIから元の論文を正しく検索できることをテスト"""
-    search = SemanticScholarSearch(headers)
-    paper = search._find_original_paper(sample_papers, "10.1145/test1")
-
-    assert paper.title == "Test Paper 1"
-    assert paper.doi == "10.1145/test1"
-
-
-def test_find_original_paper_not_found(headers: dict[str, str], sample_papers: list[Paper]) -> None:
-    """存在しないDOIの場合にエラーが発生することをテスト"""
-    search = SemanticScholarSearch(headers)
-
-    with pytest.raises(ValueError, match="not found in original list"):
-        search._find_original_paper(sample_papers, "10.1145/nonexistent")
-
-
-def test_find_original_paper_none_doi(headers: dict[str, str], sample_papers: list[Paper]) -> None:
-    """DOIがNoneの場合にエラーが発生することをテスト"""
-    search = SemanticScholarSearch(headers)
-
-    with pytest.raises(ValueError, match="DOI is None"):
-        search._find_original_paper(sample_papers, None)
-
-
-def test_find_original_paper_multiple_found(headers: dict[str, str]) -> None:
-    """同じDOIの論文が複数ある場合にエラーが発生することをテスト"""
-    duplicate_papers = [
-        Paper(title="Paper 1", authors=["A"], year=2025, venue="RecSys", doi="10.1145/dup"),
-        Paper(title="Paper 2", authors=["B"], year=2025, venue="RecSys", doi="10.1145/dup"),
-    ]
-
-    search = SemanticScholarSearch(headers)
-
-    with pytest.raises(ValueError, match="Multiple papers"):
-        search._find_original_paper(duplicate_papers, "10.1145/dup")
-
-
 async def test_enrich_paper_metadata_with_abstract_and_pdf(
     headers: dict[str, str],
 ) -> None:
@@ -236,13 +198,13 @@ async def test_enrich_paper_metadata_with_arxiv(
     mock_arxiv_response.status_code = 200
     mock_arxiv_response.raise_for_status = mocker.MagicMock()
 
-    mock_get = mocker.patch("httpx.AsyncClient.get", return_value=mock_arxiv_response)
+    mock_head = mocker.patch("httpx.AsyncClient.head", return_value=mock_arxiv_response)
 
     async with SemanticScholarSearch(headers) as search:
         enriched = await search._enrich_paper_metadata(paper, data)
 
     assert enriched.pdf_url == "https://arxiv.org/pdf/2401.12345"
-    mock_get.assert_called_once_with("https://arxiv.org/abs/2401.12345")
+    mock_head.assert_called_once_with("https://arxiv.org/abs/2401.12345")
 
 
 async def test_try_fetch_arxiv_pdf_success(headers: dict[str, str], mocker: MockerFixture) -> None:
@@ -251,7 +213,7 @@ async def test_try_fetch_arxiv_pdf_success(headers: dict[str, str], mocker: Mock
     mock_response.status_code = 200
     mock_response.raise_for_status = mocker.MagicMock()
 
-    mocker.patch("httpx.AsyncClient.get", return_value=mock_response)
+    mocker.patch("httpx.AsyncClient.head", return_value=mock_response)
 
     async with SemanticScholarSearch(headers) as search:
         pdf_url = await search._try_fetch_arxiv_pdf("Available at https://arxiv.org/abs/2401.12345")
@@ -281,7 +243,7 @@ async def test_try_fetch_arxiv_pdf_http_error(
 
     mock_response.raise_for_status = mock_raise_for_status
 
-    mocker.patch("httpx.AsyncClient.get", return_value=mock_response)
+    mocker.patch("httpx.AsyncClient.head", return_value=mock_response)
 
     async with SemanticScholarSearch(headers) as search:
         pdf_url = await search._try_fetch_arxiv_pdf("Available at https://arxiv.org/abs/9999.99999")

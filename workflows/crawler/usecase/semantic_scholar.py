@@ -39,7 +39,7 @@ class SemanticScholarSearch:
     paper_search_api = "https://api.semanticscholar.org/graph/v1/paper"
     paper_batch_search_api = "https://api.semanticscholar.org/graph/v1/paper/batch"
 
-    arxiv_abs_link_pattern = re.compile(r"https://arxiv\.org/abs/([\w.]+)")
+    arxiv_abs_link_pattern = re.compile(r"https://arxiv\.org/abs/([\w./-]+)")
 
     def __init__(self, headers: dict[str, str]) -> None:
         """SemanticScholarSearchインスタンスを初期化します。
@@ -102,20 +102,32 @@ class SemanticScholarSearch:
         # DOIリストを抽出
         doi_list = self._extract_dois(papers)
 
+        # DOIをキーとする辞書を作成し、O(1)での検索を可能にする
+        doi_to_paper_map = {p.doi: p for p in papers if p.doi}
+
         # Semantic Scholar APIからデータを取得
         data_list = await self._fetch_semantic_scholar_data(doi_list)
 
         # 元の論文とマッチングして充実
         enriched_papers: list[Paper] = []
         for data in data_list:
-            try:
-                original_paper = self._find_original_paper(
-                    papers, data.get("externalIds", {}).get("DOI")
+            doi = data.get("externalIds", {}).get("DOI")
+            if not doi:
+                logger.warning("Skipping paper due to missing DOI in API response")
+                continue
+
+            original_paper = doi_to_paper_map.get(doi)
+            if not original_paper:
+                logger.warning(
+                    f"Skipping paper due to error: Paper with DOI '{doi}' not found in original list"
                 )
+                continue
+
+            try:
                 enriched_paper = await self._enrich_paper_metadata(original_paper, data)
                 enriched_papers.append(enriched_paper)
             except ValueError as e:
-                logger.warning(f"Skipping paper due to error: {e}")
+                logger.warning(f"Skipping paper due to error during metadata enrichment: {e}")
                 continue
 
         return enriched_papers
@@ -164,31 +176,6 @@ class SemanticScholarSearch:
         # データが取得できない場合（None）を除外
         return [d for d in data if d is not None]
 
-    def _find_original_paper(self, papers: list[Paper], doi: str | None) -> Paper:
-        """DOIを使用して元の論文オブジェクトを検索します。
-
-        Args:
-            papers: 検索対象の論文リスト
-            doi: 検索するDOI
-
-        Returns:
-            マッチした論文オブジェクト
-
-        Raises:
-            ValueError: 論文が見つからない、または複数見つかった場合
-        """
-        if doi is None:
-            raise ValueError("DOI is None in API response")
-
-        matched_papers = [p for p in papers if p.doi == doi]
-
-        if len(matched_papers) == 0:
-            raise ValueError(f"Paper with DOI '{doi}' not found in original list")
-        if len(matched_papers) > 1:
-            raise ValueError(f"Multiple papers with DOI '{doi}' found in original list")
-
-        return matched_papers[0]
-
     async def _enrich_paper_metadata(self, paper: Paper, data: dict[str, Any]) -> Paper:
         """APIレスポンスから論文のメタデータを充実させます。
 
@@ -210,24 +197,26 @@ class SemanticScholarSearch:
         # PDF URLの取得
         open_access_pdf = data.get("openAccessPdf")
         if open_access_pdf is not None:
+            # openAccessPdf.url が利用可能な場合はそれを優先する
             url = open_access_pdf.get("url")
             if url:
                 enriched_paper.pdf_url = url
-
-            # disclaimerにarXivリンクがある場合は試す
-            disclaimer = open_access_pdf.get("disclaimer")
-            if disclaimer:
-                arxiv_pdf_url = await self._try_fetch_arxiv_pdf(disclaimer)
-                if arxiv_pdf_url:
-                    enriched_paper.pdf_url = arxiv_pdf_url
+            else:
+                # disclaimerにarXivリンクがある場合は試す（URLがないときのフォールバック）
+                disclaimer = open_access_pdf.get("disclaimer")
+                if disclaimer:
+                    arxiv_pdf_url = await self._try_fetch_arxiv_pdf(disclaimer)
+                    if arxiv_pdf_url:
+                        enriched_paper.pdf_url = arxiv_pdf_url
 
         return enriched_paper
 
     async def _try_fetch_arxiv_pdf(self, disclaimer: str) -> str | None:
         """disclaimerからarXivリンクを抽出し、PDF URLを取得します。
 
-        disclaimerにarXivの抄録URLが含まれている場合、そのURLが有効か確認し、
-        PDF URLに変換して返します。
+        disclaimerにarXivの抄録URLが含まれている場合、そ のURLが有効か確認し、
+        PDF URLに変換して返します。URLの存在確認にはHEADリクエストを使用し、
+        ネットワーク通信量を削減します。
 
         Args:
             disclaimer: Semantic Scholar APIのdisclaimerテキスト
@@ -244,10 +233,11 @@ class SemanticScholarSearch:
 
         abstract_url = match.group(0)
         try:
-            resp = await self.client.get(abstract_url)
+            # URLの存在確認のみなのでHEADリクエストを使用
+            resp = await self.client.head(abstract_url)
             resp.raise_for_status()
             # 抄録ページが有効ならPDF URLに変換
-            return abstract_url.replace("abs", "pdf")
+            return abstract_url.replace("/abs/", "/pdf/")
         except httpx.HTTPStatusError as e:
             logger.error(f"Failed to fetch arXiv abstract at {abstract_url}: {e}")
             return None

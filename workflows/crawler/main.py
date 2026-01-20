@@ -25,20 +25,19 @@ async def recsys_crawl(headers: dict[str, str]) -> None:
         papers = await dblp_search_usecase.fetch_papers(conf="recsys", year=2025, h=1000)
         logger.info(f"Fetched {len(papers)} papers")
 
+    total_papers_count = len(papers)
     async with SemanticScholarSearch(headers) as semantic_scholar_search_usecase:
-        papers = await semantic_scholar_search_usecase.enrich_papers(papers)
+        enriched_papers = await semantic_scholar_search_usecase.enrich_papers(papers)
 
-    abs_pass_cnt = 0
-    pdf_pass_cnt = 0
-    for paper in papers:
-        if paper.abstract is not None:
-            abs_pass_cnt += 1
-        if paper.pdf_url is not None:
-            pdf_pass_cnt += 1
-    logger.info(
-        f"Abstract pass rate: {abs_pass_cnt / len(papers):.4f}, {abs_pass_cnt}/{len(papers)}"
-    )
-    logger.info(f"PDF pass rate: {pdf_pass_cnt / len(papers):.4f}, {pdf_pass_cnt}/{len(papers)}")
+    if total_papers_count > 0:
+        abs_pass_cnt = sum(p.abstract is not None for p in enriched_papers)
+        pdf_pass_cnt = sum(p.pdf_url is not None for p in enriched_papers)
+        logger.info(
+            f"Abstract pass rate: {abs_pass_cnt / total_papers_count:.4f}, {abs_pass_cnt}/{total_papers_count}"
+        )
+        logger.info(
+            f"PDF pass rate: {pdf_pass_cnt / total_papers_count:.4f}, {pdf_pass_cnt}/{total_papers_count}"
+        )
 
 
 async def main() -> None:
