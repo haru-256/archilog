@@ -47,3 +47,7 @@ disallow_untyped_defs = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto" # マーカーを省略しても自動で非同期テストを認識する
+log_cli = true
+log_cli_level = "WARNING"
+log_cli_format = "%(asctime)s | %(levelname)-8s | %(name)s:%(funcName)s:%(lineno)d - %(message)s"
+log_cli_date_format = "%Y-%m-%d %H:%M:%S"
