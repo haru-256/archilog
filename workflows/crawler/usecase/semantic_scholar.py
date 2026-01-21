@@ -5,14 +5,15 @@ DBLPから取得した基本的な論文情報を充実させる機能を提供�
 バッチ処理により効率的に複数の論文を処理できます。
 """
 
+import asyncio
 import re
 from typing import Any
 
 import httpx
 from loguru import logger
-from libs.http_utils import post_with_retry
 
 from domain.paper import Paper
+from libs.http_utils import post_with_retry
 
 
 class SemanticScholarSearch:
@@ -36,11 +37,14 @@ class SemanticScholarSearch:
         ...     enriched_papers = await searcher.enrich_papers(papers)
     """
 
-    base_url = "https://api.semanticscholar.org"
-    paper_search_api = "https://api.semanticscholar.org/graph/v1/paper"
-    paper_batch_search_api = "https://api.semanticscholar.org/graph/v1/paper/batch"
-
-    arxiv_abs_link_pattern = re.compile(r"https://arxiv\.org/abs/([\w./-]+)")
+    DEFAULT_CONCURRENCY = 10
+    # Semantic Scholar APIは最大500件までバッチで取得可能
+    SEMANTIC_SCHOLAR_BATCH_SIZE = 500
+    SEMANTIC_SCHOLAR_FIELDS = "externalIds,abstract,openAccessPdf"
+    BASE_URL = "https://api.semanticscholar.org"
+    PAPER_SEARCH_API = "https://api.semanticscholar.org/graph/v1/paper"
+    PAPER_BATCH_SEARCH_API = "https://api.semanticscholar.org/graph/v1/paper/batch"
+    ARXIV_ABS_LINK_PATTERN = re.compile(r"https://arxiv\.org/abs/([\w./-]+)")
 
     def __init__(self, headers: dict[str, str]) -> None:
         """SemanticScholarSearchインスタンスを初期化します。
@@ -65,7 +69,7 @@ class SemanticScholarSearch:
             keepalive_expiry=5.0,
         )
         self.client = httpx.AsyncClient(
-            headers=self.headers, base_url=self.base_url, limits=limits, timeout=30.0
+            headers=self.headers, base_url=self.BASE_URL, limits=limits, timeout=30.0
         )
         return self
 
@@ -152,11 +156,14 @@ class SemanticScholarSearch:
             doi_list.append(paper.doi)
         return doi_list
 
-    async def _fetch_semantic_scholar_data(self, dois: list[str]) -> list[dict[str, Any]]:
+    async def _fetch_semantic_scholar_data(
+        self, dois: list[str], semaphore: asyncio.Semaphore | None = None
+    ) -> list[dict[str, Any]]:
         """Semantic Scholar APIからバッチでデータを取得します。
 
         Args:
             dois: DOIのリスト
+            semaphore: 並行実行数を制限するセマフォ（デフォルト: None）
 
         Returns:
             APIレスポンスのデータリスト（Noneを除外済み）
@@ -167,17 +174,34 @@ class SemanticScholarSearch:
         if self.client is None:
             raise RuntimeError("Client is not initialized")
 
-        params = {"fields": "externalIds,abstract,openAccessPdf"}
-        payload = {"ids": [f"DOI:{doi}" for doi in dois]}
+        # クロージャ内でself.clientを参照すると型エラーになる可能性があるためローカル変数にする
+        client = self.client
 
-        resp = await post_with_retry(
-            self.client, self.paper_batch_search_api, params=params, json=payload
-        )
-        resp.raise_for_status()
+        # デフォルトのセマフォを設定（デフォルト引数でインスタンス化するとイベントループの問題が起きるため）
+        sem = semaphore or asyncio.Semaphore(self.DEFAULT_CONCURRENCY)
 
-        data: list[dict[str, Any] | None] = resp.json()
-        # データが取得できない場合（None）を除外
-        return [d for d in data if d is not None]
+        batch_size = self.SEMANTIC_SCHOLAR_BATCH_SIZE
+        params = {"fields": self.SEMANTIC_SCHOLAR_FIELDS}
+
+        async def fetch_batch(batch_dois: list[str]) -> list[dict[str, Any] | None]:
+            async with sem:
+                payload = {"ids": [f"DOI:{doi}" for doi in batch_dois]}
+                resp = await post_with_retry(
+                    client, self.PAPER_BATCH_SEARCH_API, params=params, json=payload
+                )
+                resp.raise_for_status()
+                batch_data: list[dict[str, Any] | None] = resp.json()
+            return batch_data
+
+        # TaskGroup でバッチリクエストを並行実行
+        tasks: list[asyncio.Task[list[dict[str, Any] | None]]] = []
+        async with asyncio.TaskGroup() as tg:
+            for i in range(0, len(dois), batch_size):
+                batch = dois[i : i + batch_size]
+                tasks.append(tg.create_task(fetch_batch(batch)))
+
+        flat_list = [item for task in tasks for item in task.result() if item is not None]
+        return flat_list
 
     async def _enrich_paper_metadata(self, paper: Paper, data: dict[str, Any]) -> Paper:
         """APIレスポンスから論文のメタデータを充実させます。
@@ -230,7 +254,7 @@ class SemanticScholarSearch:
         if self.client is None:
             return None
 
-        match = self.arxiv_abs_link_pattern.search(disclaimer)
+        match = self.ARXIV_ABS_LINK_PATTERN.search(disclaimer)
         if match is None:
             return None
 
