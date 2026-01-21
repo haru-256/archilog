@@ -135,16 +135,17 @@ def test_extract_dois(headers: dict[str, str], sample_papers: list[Paper]) -> No
 
 
 def test_extract_dois_with_missing_doi(headers: dict[str, str]) -> None:
-    """DOIが欠けている論文がある場合にエラーが発生することをテスト"""
+    """DOIが欠けている論文がある場合にエラーログを出力してスキップすることをテスト"""
     papers = [
         Paper(title="Paper 1", authors=["A"], year=2025, venue="RecSys", doi="10.1145/test1"),
         Paper(title="Paper 2", authors=["B"], year=2025, venue="RecSys", doi=None),
     ]
 
     search = SemanticScholarSearch(headers)
+    dois = search._extract_dois(papers)
 
-    with pytest.raises(ValueError, match="must have a DOI"):
-        search._extract_dois(papers)
+    # DOIがあるものだけが抽出されていること（ValueErrorは発生しない）
+    assert dois == ["10.1145/test1"]
 
 
 async def test_enrich_paper_metadata_with_abstract_and_pdf(
