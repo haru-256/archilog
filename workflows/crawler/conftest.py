@@ -17,12 +17,12 @@ if TYPE_CHECKING:
 
 def logging_sink(message: "Message") -> None:
     """Sink function that forwards loguru messages to Python's logging system.
-    
+
     This function is specifically designed for pytest integration. It extracts
     log records from loguru messages and forwards them to Python's standard
     logging system, preserving source location information (module name, function
     name, and line number) for proper display in pytest's log output.
-    
+
     Args:
         message: The loguru Message object containing the log record
     """
@@ -67,16 +67,16 @@ def logging_sink(message: "Message") -> None:
 @pytest.fixture(scope="session", autouse=True)
 def configure_loguru_for_pytest() -> None:
     """Configure loguru to integrate with pytest's logging system.
-    
+
     This fixture is automatically applied to all test sessions. It reconfigures
     loguru to forward all log messages to Python's standard logging system,
     which pytest can then capture and display according to log_cli settings.
-    
+
     Important: This removes ALL existing loguru handlers (including the default
     stderr handler) and replaces them with a single handler that forwards to
     Python's logging. This configuration only affects test runs and does not
     impact normal application execution outside of pytest.
-    
+
     The configuration:
     1. Removes all loguru handlers (including default stderr handler)
     2. Adds a custom sink that forwards messages to Python's logging
