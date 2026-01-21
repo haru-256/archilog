@@ -1,5 +1,6 @@
 from typing import Any
 from unittest.mock import AsyncMock
+import time
 
 import httpx
 import pytest
@@ -232,8 +233,6 @@ class TestPostWithRetry:
         mocker: MockerFixture,
     ) -> None:
         """指数バックオフのタイミングが正しく動作することを確認"""
-        import time
-
         rate_limit_response = httpx.Response(
             429,
             request=httpx.Request("POST", sample_url),
