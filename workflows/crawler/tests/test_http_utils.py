@@ -4,7 +4,6 @@ import time
 
 import httpx
 import pytest
-from pytest_mock import MockerFixture
 
 from libs.http_utils import is_rate_limit, post_with_retry
 
@@ -242,7 +241,6 @@ class TestPostWithRetry:
         sample_url: str,
         sample_params: dict[str, Any],
         sample_json: dict[str, Any],
-        mocker: MockerFixture,
     ) -> None:
         """指数バックオフのタイミングが正しく動作することを確認"""
         rate_limit_response = httpx.Response(
