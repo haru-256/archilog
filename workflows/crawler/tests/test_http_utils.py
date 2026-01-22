@@ -40,11 +40,12 @@ async def test_post_with_retry_backoff(mocker: MockerFixture) -> None:
     mock_client = mocker.AsyncMock(spec=httpx.AsyncClient)
 
     # Setup: 429 twice, then 200
-    resp_429 = mocker.Mock(spec=httpx.Response)
+    resp_429 = mocker.MagicMock(spec=httpx.Response)
     resp_429.status_code = 429
+    resp_429.headers = httpx.Headers()
     resp_429.url = "http://test.com"
 
-    resp_200 = mocker.Mock(spec=httpx.Response)
+    resp_200 = mocker.MagicMock(spec=httpx.Response)
     resp_200.status_code = 200
 
     mock_client.post.side_effect = [resp_429, resp_429, resp_200]
@@ -69,6 +70,7 @@ async def test_post_with_retry_exhausted(mocker: MockerFixture) -> None:
 
     resp_429 = mocker.MagicMock(spec=httpx.Response)
     resp_429.status_code = 429
+    resp_429.headers = httpx.Headers()
     resp_429.url = "http://test.com"
 
     # raise_for_status mock for final error handling
@@ -124,6 +126,7 @@ async def test_get_with_retry_backoff(mocker: MockerFixture) -> None:
 
     resp_429 = mocker.MagicMock(spec=httpx.Response)
     resp_429.status_code = 429
+    resp_429.headers = httpx.Headers()
     resp_429.url = "http://test.com"
 
     resp_200 = mocker.MagicMock(spec=httpx.Response)
@@ -136,3 +139,58 @@ async def test_get_with_retry_backoff(mocker: MockerFixture) -> None:
     assert response.status_code == 200
     assert mock_client.get.call_count == 2
     assert mock_sleep.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_retry_after_header_compliance(mocker: MockerFixture) -> None:
+    # Mock asyncio.sleep to verify it's called with correct value
+    mock_sleep = mocker.patch("asyncio.sleep", new_callable=mocker.AsyncMock)
+    mock_client = mocker.AsyncMock(spec=httpx.AsyncClient)
+
+    # 429 response with Retry-After: 15
+    resp_429 = mocker.MagicMock(spec=httpx.Response)
+    resp_429.status_code = 429
+    resp_429.url = "http://test.com"
+    resp_429.headers = httpx.Headers({"Retry-After": "15"})
+
+    resp_200 = mocker.MagicMock(spec=httpx.Response)
+    resp_200.status_code = 200
+
+    mock_client.post.side_effect = [resp_429, resp_200]
+
+    response = await post_with_retry(mock_client, "http://test.com", {}, {})
+
+    assert response.status_code == 200
+    assert mock_client.post.call_count == 2
+
+    # Should sleep for 15 seconds (Retry-After value)
+    mock_sleep.assert_awaited_once_with(15.0)
+
+
+@pytest.mark.asyncio
+async def test_retry_after_header_missing_fallback(mocker: MockerFixture) -> None:
+    # 429 response without Retry-After (should fallback to exponential backoff)
+    mock_sleep = mocker.patch("asyncio.sleep", new_callable=mocker.AsyncMock)
+    mock_client = mocker.AsyncMock(spec=httpx.AsyncClient)
+
+    resp_429 = mocker.MagicMock(spec=httpx.Response)
+    resp_429.status_code = 429
+    resp_429.url = "http://test.com"
+    resp_429.headers = httpx.Headers()
+    # No Retry-After header
+
+    resp_200 = mocker.MagicMock(spec=httpx.Response)
+    resp_200.status_code = 200
+
+    mock_client.post.side_effect = [resp_429, resp_200]
+
+    await post_with_retry(mock_client, "http://test.com", {}, {})
+
+    # Sleep should be called with some value (random exponential), check it's not 15 or 0
+    # Just asserting it was called is mostly enough, but we can check if it's within min/max of the exp backoff
+    assert mock_sleep.call_count == 1
+    call_args = mock_sleep.await_args
+    assert call_args
+    wait_time = call_args[0][0]
+    # Default exp backoff min=1, max=10
+    assert 1.0 <= wait_time <= 10.0
