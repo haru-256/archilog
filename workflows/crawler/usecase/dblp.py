@@ -174,7 +174,6 @@ class DBLPSearch:
             if isinstance(title, list):
                 title = ", ".join(title)
             year: str | None = info.get("year")
-            year: str | None = info.get("year")
             venue: str | list[str] | None = info.get("venue")
             if isinstance(venue, list):
                 venue = ", ".join(venue)

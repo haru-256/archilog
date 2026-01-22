@@ -33,6 +33,7 @@ async def recsys_crawl(
             conf="recsys", year=year, h=1000, semaphore=semaphore
         )
         logger.info(f"Fetched {len(papers)} papers")
+    papers = [p for p in papers if p.doi is not None]
 
     total_papers_count = len(papers)
     async with SemanticScholarSearch(headers) as semantic_scholar_search_usecase:

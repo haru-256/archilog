@@ -155,9 +155,7 @@ class SemanticScholarSearch:
         doi_list: list[str] = []
         for paper in papers:
             if paper.doi is None:
-                message = f"Paper '{paper.title}' has no DOI"
-                logger.error(message)
-                raise ValueError(message)
+                raise ValueError(f"Paper '{paper.title}' has no DOI")
             doi_list.append(paper.doi)
         return doi_list
 
