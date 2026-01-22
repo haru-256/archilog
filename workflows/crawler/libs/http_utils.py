@@ -64,23 +64,19 @@ def wait_retry_after(retry_state: RetryCallState) -> float:
     フォールバックします。Retry-Afterヘッダーが存在しない場合も同様に
     指数バックオフを使用します。
     """
-    default_wait = wait_random_exponential(multiplier=0.5, min=1, max=10)(retry_state)
+    if retry_state.outcome is not None:
+        result = retry_state.outcome.result()
+        if isinstance(result, httpx.Response) and result.status_code == 429:
+            retry_after = result.headers.get("Retry-After")
+            if retry_after:
+                try:
+                    wait_time = float(retry_after)
+                    logger.debug(f"Waiting for {wait_time}s (Retry-After)")
+                    return wait_time
+                except ValueError:
+                    logger.warning(f"Invalid Retry-After header: {retry_after}")
 
-    if retry_state.outcome is None:
-        return float(default_wait)
-
-    result = retry_state.outcome.result()
-    if isinstance(result, httpx.Response) and result.status_code == 429:
-        retry_after = result.headers.get("Retry-After")
-        if retry_after:
-            try:
-                wait_time = float(retry_after)
-                logger.debug(f"Waiting for {wait_time}s (Retry-After)")
-                return wait_time
-            except ValueError:
-                logger.warning(f"Invalid Retry-After header: {retry_after}")
-
-    return float(default_wait)
+    return wait_random_exponential(multiplier=0.5, min=1, max=10)(retry_state)
 
 
 @retry(
