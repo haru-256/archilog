@@ -126,11 +126,12 @@ class DBLPSearch:
 
         try:
             # セマフォを使用してリクエスト並列数を制御
+            request_coro = get_with_retry(self.client, self.search_api, params=params)
             if semaphore is not None:
                 async with semaphore:
-                    resp = await get_with_retry(self.client, self.search_api, params=params)
+                    resp = await request_coro
             else:
-                resp = await get_with_retry(self.client, self.search_api, params=params)
+                resp = await request_coro
 
             papers = self._parse_paper(resp.json())
             return papers
