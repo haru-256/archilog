@@ -55,9 +55,33 @@ def before_log(retry_state: RetryCallState) -> None:
         )
 
 
+def wait_retry_after(retry_state: RetryCallState) -> float:
+    """Retry-Afterヘッダーを考慮した待機時間を計算します。
+
+    Retry-Afterヘッダーが存在し、その値が数値形式（delay-seconds）である場合は
+    その値を待機時間として使用します。HTTP-date形式のRetry-After値は現在
+    サポートしておらず、その場合はValueErrorとして扱われ、指数バックオフに
+    フォールバックします。Retry-Afterヘッダーが存在しない場合も同様に
+    指数バックオフを使用します。
+    """
+    if retry_state.outcome is not None:
+        result = retry_state.outcome.result()
+        if isinstance(result, httpx.Response) and result.status_code == 429:
+            retry_after = result.headers.get("Retry-After")
+            if retry_after:
+                try:
+                    wait_time = float(retry_after)
+                    logger.debug(f"Waiting for {wait_time}s (Retry-After)")
+                    return wait_time
+                except ValueError:
+                    logger.warning(f"Invalid Retry-After header: {retry_after}")
+
+    return wait_random_exponential(multiplier=0.5, min=1, max=10)(retry_state)
+
+
 @retry(
     stop=stop_after_attempt(5),
-    wait=wait_random_exponential(multiplier=0.5, min=1, max=10),
+    wait=wait_retry_after,
     retry=retry_if_result(is_rate_limit),
     before=before_log,
     retry_error_callback=log_and_raise_final_error,
@@ -91,7 +115,7 @@ async def post_with_retry(
 
 @retry(
     stop=stop_after_attempt(5),
-    wait=wait_random_exponential(multiplier=0.5, min=1, max=10),
+    wait=wait_retry_after,
     retry=retry_if_result(is_rate_limit),
     before=before_log,
     retry_error_callback=log_and_raise_final_error,
