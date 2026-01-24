@@ -102,7 +102,7 @@ class RobotGuard:
         設定がない場合はNoneを返します。
 
         Returns:
-            float | None: Crawl-delay(秒数)。設定がない場合はNone
+            int | None: Crawl-delay(秒数)。設定がない場合はNone
 
         Raises:
             RuntimeError: robots.txtがまだロードされていない場合
