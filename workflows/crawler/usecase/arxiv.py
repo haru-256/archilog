@@ -16,9 +16,9 @@ class ArxivSearch:
     BASE_URL = "https://export.arxiv.org/api/query"
     # XMLの名前空間定義
     NAMESPACES = {
-        "atom": "https://www.w3.org/2005/Atom",
-        "opensearch": "https://a9.com/-/spec/opensearch/1.1/",
-        "arxiv": "https://arxiv.org/schemas/atom",
+        "atom": "http://www.w3.org/2005/Atom",
+        "opensearch": "http://a9.com/-/spec/opensearch/1.1/",
+        "arxiv": "http://arxiv.org/schemas/atom",
     }
 
     def __init__(self, headers: dict[str, str]) -> None:
