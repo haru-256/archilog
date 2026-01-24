@@ -84,6 +84,57 @@ async def test_enrich_papers_success_oa_locations(
 
 
 @pytest.mark.asyncio
+async def test_enrich_papers_overwrite_true(
+    unpaywall_search: UnpaywallSearch, mock_paper: Paper
+) -> None:
+    # Set existing PDF URL
+    mock_paper.pdf_url = "https://existing.com/old.pdf"
+
+    mock_response_data: dict[str, Any] = {
+        "doi": "10.1234/test.DOI",
+        "best_oa_location": {"url_for_pdf": "https://new.com/new.pdf"},
+    }
+
+    with patch("usecase.unpaywall.get_with_retry", new_callable=AsyncMock) as mock_get:
+        mock_response = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = mock_response_data
+        mock_get.return_value = mock_response
+
+        async with unpaywall_search:
+            enriched_papers = await unpaywall_search.enrich_papers([mock_paper], overwrite=True)
+
+    assert len(enriched_papers) == 1
+    assert enriched_papers[0].pdf_url == "https://new.com/new.pdf"
+
+
+@pytest.mark.asyncio
+async def test_enrich_papers_overwrite_false(
+    unpaywall_search: UnpaywallSearch, mock_paper: Paper
+) -> None:
+    # Set existing PDF URL
+    mock_paper.pdf_url = "https://existing.com/old.pdf"
+
+    mock_response_data: dict[str, Any] = {
+        "doi": "10.1234/test.DOI",
+        "best_oa_location": {"url_for_pdf": "https://new.com/new.pdf"},
+    }
+
+    with patch("usecase.unpaywall.get_with_retry", new_callable=AsyncMock) as mock_get:
+        mock_response = MagicMock(spec=httpx.Response)
+        mock_response.status_code = 200
+        mock_response.json.return_value = mock_response_data
+        mock_get.return_value = mock_response
+
+        async with unpaywall_search:
+            # overwrite default is False
+            enriched_papers = await unpaywall_search.enrich_papers([mock_paper])
+
+    assert len(enriched_papers) == 1
+    assert enriched_papers[0].pdf_url == "https://existing.com/old.pdf"
+
+
+@pytest.mark.asyncio
 async def test_enrich_papers_no_doi(unpaywall_search: UnpaywallSearch) -> None:
     paper_no_doi = Paper(
         title="No DOI Paper", authors=["Author"], year=2024, venue="Venue", doi=None

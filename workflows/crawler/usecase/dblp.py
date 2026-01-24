@@ -107,7 +107,7 @@ class DBLPSearch:
         """
         if self.client is None:
             raise RuntimeError(
-                "DBLPSearch must be used as an async contex manager (use 'async with')"
+                "DBLPSearch must be used as an async context manager (use 'async with')"
             )
         if not self.robot_guard.loaded:
             await self.robot_guard.load(client=self.client)

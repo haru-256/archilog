@@ -12,7 +12,7 @@ from libs.http_utils import get_with_retry
 class UnpaywallSearch:
     DEFAULT_CONCURRENCY = 10
     BASE_URL = "https://api.unpaywall.org"
-    PAPER_SERCH_PATH = "/v2"
+    PAPER_SEARCH_PATH = "v2"
 
     def __init__(self, headers: dict[str, str]) -> None:
         self.headers = headers
@@ -61,7 +61,7 @@ class UnpaywallSearch:
             overwrite: PDF URLを上書きするかどうか（デフォルト: False）
 
         Returns:
-            情報が付与された論文のリスト
+            情報が付与された論文のリスト。len(papers)とlen(return value)は等しい。
 
         Raises:
             RuntimeError: コンテキストマネージャー外で呼び出された場合
@@ -72,40 +72,24 @@ class UnpaywallSearch:
             )
         sem = semaphore or asyncio.Semaphore(self.DEFAULT_CONCURRENCY)
 
-        # DOIをキーとする辞書を作成し、O(1)での検索を可能にする
-        doi_to_paper_map = {p.doi: p for p in papers if p.doi}
-
         # DOIリストを抽出
         doi_list = self._extract_dois(papers)
 
         # Unpaywallから論文データを取得
         data_list = await self._fetch_papers(doi_list, sem)
-
-        # 各論文に結果を適用
-        enriched_papers: list[Paper] = []
-        for data in data_list:
-            doi = data.get("doi")
-            if not doi:
-                logger.warning("Skipping paper due to missing DOI in API response")
+        data_map = {d["doi"]: d for d in data_list if d and d.get("doi")}
+        # 元の論文リストをループして情報を付与
+        for paper in papers:
+            data = data_map.get(paper.doi)
+            if not data:
+                logger.warning(f"Skipping paper {paper.doi} due to missing data in API response")
                 continue
-
-            original_paper = doi_to_paper_map.get(doi)
-            if not original_paper:
-                logger.warning(
-                    f"Skipping paper due to error: Paper with DOI '{doi}' not found in original list"
-                )
-                continue
-
             try:
-                enriched_paper = await self._enrich_paper_metadata(
-                    original_paper, data, overwrite=overwrite
-                )
-                enriched_papers.append(enriched_paper)
+                await self._enrich_paper_metadata(paper, data, overwrite=overwrite)
             except ValueError as e:
-                logger.warning(f"Skipping paper due to error during metadata enrichment: {e}")
-                continue
+                logger.warning(f"Skipping enrichment for paper {paper.doi} due to error: {e}")
 
-        return enriched_papers
+        return papers
 
     def _extract_dois(self, papers: list[Paper]) -> list[str]:
         """論文リストからDOIリストを抽出します。
@@ -174,7 +158,7 @@ class UnpaywallSearch:
         """
         if self.client is None:
             raise RuntimeError("Client is not initialized")
-        url = f"{self.BASE_URL}/{self.PAPER_SERCH_PATH}/{doi}"
+        url = f"{self.BASE_URL}/{self.PAPER_SEARCH_PATH}/{doi}"
 
         async with sem:
             resp = await get_with_retry(self.client, url, params={"email": email})
@@ -193,23 +177,25 @@ class UnpaywallSearch:
         Args:
             paper: 更新対象の論文オブジェクト
             data: APIから取得した論文データ
-            overwrite: PDF URLを上書きするかどうか
+            overwrite: PDF URLを上書きするかどうか。設定値がない場合は、overwriteによらず上書きし、設定値がある場合は、overwriteに従う。
 
         Returns:
             更新された論文オブジェクト
         """
-        # PDF URLが既に設定されている場合は、上書きしない
-        if not overwrite and paper.pdf_url:
-            return paper
-        url_for_pdf = (data.get("best_oa_location") or {}).get("url_for_pdf")
-        if url_for_pdf:
-            paper.pdf_url = url_for_pdf
+        # 新しいPDF URLを取得
+        new_url = (data.get("best_oa_location") or {}).get("url_for_pdf")
+        if not new_url:
+            for location in data.get("oa_locations", []):
+                new_url = location.get("url_for_pdf")
+                if new_url:
+                    break
+
+        if not new_url:
             return paper
 
-        # best_oa_locationがない場合は、oa_locationsを走査する
-        for location in data.get("oa_locations", []):
-            url_for_pdf = location.get("url_for_pdf")
-            if url_for_pdf:
-                paper.pdf_url = url_for_pdf
-                return paper
+        # 既にPDF URLが設定されている場合、overwriteがTrueのときのみ更新
+        # 設定されていない場合は、常に更新
+        if not paper.pdf_url or overwrite:
+            paper.pdf_url = new_url
+
         return paper

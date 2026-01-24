@@ -110,10 +110,13 @@ async def test_enrich_papers_with_partial_data(
     async with SemanticScholarSearch(headers) as search:
         enriched_papers = await search.enrich_papers(sample_papers)
 
-    # Noneのデータは除外される
-    assert len(enriched_papers) == 1
+    # Noneのデータは除外されず、元のリストが返される
+    assert len(enriched_papers) == 2
     assert enriched_papers[0].title == "Test Paper 1"
     assert enriched_papers[0].abstract == "Abstract 1"
+    # データが取得できなかった論文は変更されない
+    assert enriched_papers[1].title == "Test Paper 2"
+    assert enriched_papers[1].abstract is None
 
 
 async def test_enrich_papers_outside_context_manager(
@@ -161,9 +164,9 @@ async def test_enrich_paper_metadata_with_abstract_and_pdf(
 
     assert enriched.abstract == "Test abstract"
     assert enriched.pdf_url == "https://example.com/test.pdf"
-    # 元のオブジェクトは変更されていない
-    assert paper.abstract is None
-    assert paper.pdf_url is None
+    # 元のオブジェクトが変更されている（in-place更新）
+    assert paper.abstract == "Test abstract"
+    assert paper.pdf_url == "https://example.com/test.pdf"
 
 
 async def test_enrich_paper_metadata_with_abstract_only(headers: dict[str, str]) -> None:

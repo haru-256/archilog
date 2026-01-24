@@ -82,7 +82,10 @@ class SemanticScholarSearch:
             await self.client.aclose()
 
     async def enrich_papers(
-        self, papers: list[Paper], semaphore: asyncio.Semaphore | None = None
+        self,
+        papers: list[Paper],
+        semaphore: asyncio.Semaphore | None = None,
+        overwrite: bool = False,
     ) -> list[Paper]:
         """論文リストをSemantic Scholar APIから取得したメタデータで充実させます。
 
@@ -93,9 +96,10 @@ class SemanticScholarSearch:
         Args:
             papers: 充実させる論文のリスト（DOIが必須）
             semaphore: 並行実行数を制限するセマフォ（デフォルト: None）
+            overwrite: PDF URLを上書きするかどうか（デフォルト: False）
 
         Returns:
-            メタデータで充実された論文のリスト
+            メタデータで充実された論文のリスト。len(papers)とlen(return value)は等しい。
 
         Raises:
             RuntimeError: コンテキストマネージャー外で呼び出された場合
@@ -110,35 +114,29 @@ class SemanticScholarSearch:
         # DOIリストを抽出
         doi_list = self._extract_dois(papers)
 
-        # DOIをキーとする辞書を作成し、O(1)での検索を可能にする
-        doi_to_paper_map = {p.doi: p for p in papers if p.doi}
-
         # Semantic Scholar APIからデータを取得
         data_list = await self._fetch_papers(doi_list, semaphore=semaphore)
+        data_map = {}
+        for d in data_list:
+            if not d:
+                continue
+            doi = d.get("doi") or d.get("externalIds", {}).get("DOI")
+            if doi:
+                data_map[doi] = d
 
         # 元の論文とマッチングして充実
-        enriched_papers: list[Paper] = []
-        for data in data_list:
-            doi = data.get("externalIds", {}).get("DOI")
-            if not doi:
-                logger.warning("Skipping paper due to missing DOI in API response")
+        for paper in papers:
+            data = data_map.get(paper.doi)
+            if not data:
+                logger.warning(f"Skipping paper {paper.doi} due to missing data in API response")
                 continue
-
-            original_paper = doi_to_paper_map.get(doi)
-            if not original_paper:
-                logger.warning(
-                    f"Skipping paper due to error: Paper with DOI '{doi}' not found in original list"
-                )
-                continue
-
             try:
-                enriched_paper = await self._enrich_paper_metadata(original_paper, data)
-                enriched_papers.append(enriched_paper)
+                await self._enrich_paper_metadata(paper, data, overwrite=overwrite)
             except ValueError as e:
                 logger.warning(f"Skipping paper due to error during metadata enrichment: {e}")
                 continue
 
-        return enriched_papers
+        return papers
 
     def _extract_dois(self, papers: list[Paper]) -> list[str]:
         """論文リストからDOIリストを抽出します。
@@ -186,12 +184,12 @@ class SemanticScholarSearch:
         async with asyncio.TaskGroup() as tg:
             for i in range(0, len(dois), batch_size):
                 batch = dois[i : i + batch_size]
-                tasks.append(tg.create_task(self._fetch_paper(batch, sem)))
+                tasks.append(tg.create_task(self._fetch_paper_batch(batch, sem)))
 
         flat_list = [item for task in tasks for item in task.result() if item is not None]
         return flat_list
 
-    async def _fetch_paper(
+    async def _fetch_paper_batch(
         self, batch_dois: list[str], sem: asyncio.Semaphore
     ) -> list[dict[str, Any] | None]:
         """Semantic Scholar APIからバッチでデータを取得します。
@@ -221,40 +219,52 @@ class SemanticScholarSearch:
             batch_data: list[dict[str, Any] | None] = resp.json()
         return batch_data
 
-    async def _enrich_paper_metadata(self, paper: Paper, data: dict[str, Any]) -> Paper:
+    async def _enrich_paper_metadata(
+        self, paper: Paper, data: dict[str, Any], overwrite: bool = False
+    ) -> Paper:
         """APIレスポンスから論文のメタデータを充実させます。
 
-        元の論文オブジェクトのコピーを作成し、abstractやPDF URLを追加します。
+        元の論文オブジェクトにabstractやPDF URLを追加します。
         openAccessPdfが利用可能な場合はそのURLを、disclaimerにarXivリンクがある場合は
         arXivのPDF URLを設定します。
 
         Args:
             paper: 元の論文オブジェクト
             data: Semantic Scholar APIからのレスポンスデータ
+            overwrite: Abstract, PDF URLを上書きするかどうか。設定値がない場合は、overwriteによらず上書きし、設定値がある場合は、overwriteに従う。
 
         Returns:
-            メタデータで充実された新しい論文オブジェクト
+            メタデータで充実された論文オブジェクト
         """
-        # 元のインスタンスを変更しないよう新規作成
-        enriched_paper = Paper(**paper.model_dump())
-        enriched_paper.abstract = data.get("abstract")
+        # Abstract
+        new_abstract = data.get("abstract")
+        if new_abstract and (not paper.abstract or overwrite):
+            paper.abstract = new_abstract
 
-        # PDF URLの取得
+        # PDF URL
+        new_pdf_url = await self._resolve_pdf_url(data)
+        if new_pdf_url and (not paper.pdf_url or overwrite):
+            paper.pdf_url = new_pdf_url
+
+        return paper
+
+    async def _resolve_pdf_url(self, data: dict[str, Any]) -> str | None:
+        """APIレスポンスから最適なPDF URLを解決します。"""
         open_access_pdf = data.get("openAccessPdf")
-        if open_access_pdf is not None:
-            # openAccessPdf.url が利用可能な場合はそれを優先する
-            url = open_access_pdf.get("url")
-            if url:
-                enriched_paper.pdf_url = url
-            else:
-                # disclaimerにarXivリンクがある場合は試す（URLがないときのフォールバック）
-                disclaimer = open_access_pdf.get("disclaimer")
-                if disclaimer:
-                    arxiv_pdf_url = await self._try_fetch_arxiv_pdf(disclaimer)
-                    if arxiv_pdf_url:
-                        enriched_paper.pdf_url = arxiv_pdf_url
+        if not open_access_pdf:
+            return None
 
-        return enriched_paper
+        # openAccessPdf.url が利用可能な場合はそれを優先する
+        url = open_access_pdf.get("url")
+        if url:
+            return url
+
+        # disclaimerにarXivリンクがある場合は試す（URLがないときのフォールバック）
+        disclaimer = open_access_pdf.get("disclaimer")
+        if disclaimer:
+            return await self._try_fetch_arxiv_pdf(disclaimer)
+
+        return None
 
     async def _try_fetch_arxiv_pdf(self, disclaimer: str) -> str | None:
         """disclaimerからarXivリンクを抽出し、PDF URLを取得します。
