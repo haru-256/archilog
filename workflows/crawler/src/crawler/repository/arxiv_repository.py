@@ -104,7 +104,7 @@ class ArxivRepository:
                 paper.pdf_url = fetched_paper.pdf_url
 
     async def fetch_by_doi(self, doi: str, sem: asyncio.Semaphore | None = None) -> Paper | None:
-        """DOIを使用してarXiv APIから论文データを取得します。
+        """DOIを使用してarXiv APIから論文データを取得します。
 
         Args:
             doi: 論文のDOI
