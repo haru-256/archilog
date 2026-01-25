@@ -199,8 +199,12 @@ class ArxivRepository:
         if published_tag is not None and published_tag.text:
             try:
                 published_year = int(published_tag.text[:4])
-            except ValueError:
-                pass
+            except ValueError as exc:
+                logger.warning(
+                    "Failed to parse published year from arXiv entry: text={!r}, error={!r}",
+                    published_tag.text,
+                    exc,
+                )
 
         # PDFリンク
         pdf_url = None
