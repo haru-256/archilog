@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from domain.paper import Paper
+from crawler.domain.paper import Paper
 
 
 def test_paper_creation_with_all_fields() -> None:

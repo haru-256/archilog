@@ -2,7 +2,7 @@ import sys
 
 from loguru import logger
 
-from configs import LOG_LEVEL
+from crawler.configs import LOG_LEVEL
 
 
 def setup_logger() -> None:

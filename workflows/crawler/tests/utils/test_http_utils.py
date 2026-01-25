@@ -4,7 +4,7 @@ import httpx
 import pytest
 from pytest_mock import MockerFixture
 
-from libs.http_utils import get_with_retry, is_rate_limit, post_with_retry
+from crawler.utils.http_utils import get_with_retry, is_rate_limit, post_with_retry
 
 
 @pytest.mark.asyncio
