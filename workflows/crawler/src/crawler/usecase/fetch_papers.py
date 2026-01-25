@@ -34,7 +34,7 @@ class FetchRecSysPapers:
         # 1. DBLPから論文一覧を取得
         logger.info(f"Fetching RecSys {year} papers from DBLP...")
         papers = await self.paper_retriever.fetch_papers(
-            conf="recsys", year=year, h=1000, sem=semaphore
+            conf="recsys", year=year, h=1000, semaphore=semaphore
         )
         logger.info(f"Fetched {len(papers)} papers from DBLP")
 

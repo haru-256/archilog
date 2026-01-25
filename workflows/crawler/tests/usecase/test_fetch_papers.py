@@ -88,7 +88,9 @@ async def test_execute_flow(
     # 検証
 
     # 1. DBLP Fetch (conf="recsys", year=2024, h=1000)
-    mock_dblp_repo.fetch_papers.assert_called_once_with(conf="recsys", year=2024, h=1000, sem=sem)
+    mock_dblp_repo.fetch_papers.assert_called_once_with(
+        conf="recsys", year=2024, h=1000, semaphore=sem
+    )
 
     # 中間でDOIがない論文はフィルタリングされるべき (main.pyのロジックを踏襲)
     # initial_papers[1] has no DOI, so likely filtered out before enrichment

@@ -29,7 +29,7 @@ class PaperRetriever(Protocol):
         conf: Literal["recsys", "kdd", "wsdm", "www", "sigir", "cikm"],
         year: int,
         h: int = 1000,
-        sem: asyncio.Semaphore | None = None,
+        semaphore: asyncio.Semaphore | None = None,
     ) -> list[Paper]:
         """指定されたカンファレンスと年度の論文情報を取得します。
 

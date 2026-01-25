@@ -57,7 +57,7 @@ class DBLPRepository:
         conf: Literal["recsys", "kdd", "wsdm", "www", "sigir", "cikm"],
         year: int,
         h: int = 1000,
-        sem: asyncio.Semaphore | None = None,
+        semaphore: asyncio.Semaphore | None = None,
     ) -> list[Paper]:
         """指定されたカンファレンスと年度の論文情報を取得します。
 
@@ -95,8 +95,8 @@ class DBLPRepository:
         try:
             # セマフォを使用してリクエスト並列数を制御
             request_coro = get_with_retry(self.client, self.SEARCH_API, params=params)
-            if sem is not None:
-                async with sem:
+            if semaphore is not None:
+                async with semaphore:
                     resp = await request_coro
             else:
                 resp = await request_coro
@@ -166,7 +166,6 @@ class DBLPRepository:
         except Exception as e:
             logger.warning(f"Failed to parse single paper from DBLP hit: {hit}. Error: {e}")
             return None
-
 
     def _parse_authors(self, authors_data: Any) -> list[str]:
         """著者データをパースしてリスト化します。"""
