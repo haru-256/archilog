@@ -149,8 +149,9 @@ class UnpaywallRepository:
         # Paperオブジェクトの生成 (部分データ)
         doi = data.get("doi")
         if doi is None:
-            logger.warning(f"No doi found for DOI {doi}")
+            logger.warning(f"Unpaywall response is missing 'doi' field. Response data: {data}")
             return None
+
         # Unpaywallからは主にPDF URLを取得する
         return Paper(
             title=str(data.get("title", "")),
