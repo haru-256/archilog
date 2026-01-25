@@ -16,14 +16,19 @@ DBLP Computer Science Bibliographyから主要な推薦システム・データ�
 ## 処理フロー
 
 ```mermaid
-graph LR
-    A[DBLP API] -->|基本情報取得| B[Paper]
-    B -->|DOIで検索| C[Semantic Scholar API]
-    C -->|Abstract/PDF付加| B
-    B -->|DOIで検索| E[Unpaywall API]
-    E -->|PDF付加| B
-    B -->|DOI/Titleで検索| F[arXiv API]
-    F -->|Abstract/PDF付加| B
+graph TD
+    Start([開始]) --> DBLP[DBLP API: 論文リスト取得]
+    DBLP --> Papers[Paperリスト]
+    Papers --> SS[Semantic Scholar API: 充実化]
+    SS --> UP[Unpaywall API: PDFリンク取得]
+    UP --> Arxiv[arXiv API: Abstract/PDF補完]
+    Arxiv --> End([終了: Final Papers])
+
+    subgraph Enrichment Loop
+    SS
+    UP
+    Arxiv
+    end
 ```
 
 1. **DBLP APIからの基本情報取得**
@@ -44,35 +49,34 @@ graph LR
 ## ディレクトリ構成
 
 ```text
-crawler/
+src/crawler/
 ├── domain/              # ドメインモデル層
 │   ├── __init__.py
-│   └── paper.py         # 論文を表すPaperモデル
-├── libs/                # 共有ライブラリ
-│   └── __init__.py      # RobotGuard（robots.txt処理）
+│   ├── paper.py         # 論文を表すPaperモデル
+│   └── repository.py    # リポジトリ等のインターフェース定義
+├── repository/          # リポジトリ層（データアクセス）
+│   ├── __init__.py
+│   ├── arxiv_repository.py            # arXiv API連携クラス
+│   ├── dblp_repository.py             # DBLP API連携クラス
+│   ├── semantic_scholar_repository.py # Semantic Scholar API連携クラス
+│   └── unpaywall_repository.py        # Unpaywall API連携クラス
 ├── usecase/             # ユースケース層（ビジネスロジック）
 │   ├── __init__.py
-│   ├── arxiv.py         # arXiv API連携クラス
-│   ├── dblp.py          # DBLP API連携クラス
-│   ├── semantic_scholar.py  # Semantic Scholar API連携クラス
-│   └── unpaywall.py     # Unpaywall API連携クラス
-├── tests/               # 単体テスト
-│   ├── test_dblp.py
-│   ├── test_libs.py
-│   ├── test_paper.py
-│   └── test_semantic_scholar.py
-├── main.py              # エントリーポイント
-├── config.toml          # 設定ファイル
-├── pyproject.toml       # プロジェクト設定
-└── README.md
-
+│   └── fetch_papers.py  # 論文取得・充実化のオーケストレーション
+├── utils/               # ユーティリティ
+│   ├── __init__.py      # RobotGuard（robots.txt処理）
+│   ├── http_utils.py    # HTTP通信用ユーティリティ
+│   └── log.py           # ロガー設定
+├── configs/             # 設定
+│   └── __init__.py
+└── main.py              # エントリーポイント
 ```
 
 ## 主要コンポーネント
 
 ### Domain層
 
-#### `Paper` (domain/paper.py)
+#### `Paper` (src/crawler/domain/paper.py)
 
 論文のメタデータを表すドメインモデル。
 
@@ -83,81 +87,37 @@ crawler/
 - `year`: 出版年
 - `venue`: 掲載会場（カンファレンス名）
 
-**オプションフィールド:**
+### Repository層
 
-- `doi`: Digital Object Identifier
-- `type`: 論文の種類
-- `ee`: 電子版へのリンク
-- `pdf_url`: PDFへのリンク
-- `abstract`: 論文の要約
-
-### UseCase層
-
-#### `DBLPSearch` (usecase/dblp.py)
+#### `DBLPRepository` (src/crawler/repository/dblp_repository.py)
 
 DBLP APIから論文の基本情報を取得するクラス。
 
-**主要メソッド:**
-
-- `fetch_papers(conf, year, h)`: 指定カンファレンス・年度の論文を取得
-
-**特徴:**
-
 - robots.txtの自動チェック
 - バッチ取得による効率的な処理
-- 必須フィールドの検証とスキップ
 
-#### `SemanticScholarSearch` (usecase/semantic_scholar.py)
+#### `SemanticScholarRepository` (src/crawler/repository/semantic_scholar_repository.py)
 
 Semantic Scholar APIから論文の詳細情報を取得するクラス。
 
-**主要メソッド:**
-
-- `enrich_papers(papers)`: 論文リストを要約・PDF URLで充実
-
-**特徴:**
-
 - バッチAPIによる効率的な処理
-- arXivリンクの自動検出と変換
-- 元のPaperオブジェクトを変更せず、新規作成
+- Abstract, PDF URLの付与
 
-#### `UnpaywallSearch` (usecase/unpaywall.py)
+#### `UnpaywallRepository` (src/crawler/repository/unpaywall_repository.py)
 
 Unpaywall APIからオープンアクセスなPDF URLを取得するクラス。
 
-**主要メソッド:**
-
-- `enrich_papers(papers)`: DOIを使用してPDF URLを取得・付加
-
-**特徴:**
-
-- 正式なオープンアクセスリンクを優先して取得
-
-#### `ArxivSearch` (usecase/arxiv.py)
+#### `ArxivRepository` (src/crawler/repository/arxiv_repository.py)
 
 arXiv APIから論文情報を取得するクラス。
 
-**主要メソッド:**
+- DOI検索 → 失敗したらタイトル検索
 
-- `enrich_papers(papers)`: DOIまたはタイトルで検索し、Abstract/PDFを付加
+### UseCase層
 
-**特徴:**
+#### `FetchRecSysPapers` (src/crawler/usecase/fetch_papers.py)
 
-- 安全なXMLパース (`defusedxml`使用)
-- 検索戦略: DOI検索 → 失敗したらタイトル検索
-- レート制限への配慮（同時実行数制御）
-
-### Libs層
-
-#### `RobotGuard` (libs/**init**.py)
-
-robots.txtの取得・解析を行い、クロール可否を判定するクラス。
-
-**主要メソッド:**
-
-- `load(client)`: robots.txtをロード
-- `can_fetch(url)`: URLのクロール可否を判定
-- `get_crawl_delay()`: Crawl-delay設定を取得
+各リポジトリを組み合わせて、論文情報の取得から充実化までの一連のフローを実行するクラス。
 
 ## セットアップ
 
@@ -178,30 +138,33 @@ uv sync
 ### 基本的な実行
 
 ```bash
-uv run python main.py
+uv run python src/crawler/main.py
 ```
 
 ### プログラムからの使用
 
 ```python
 import asyncio
-from usecase.dblp import DBLPSearch
-from usecase.semantic_scholar import SemanticScholarSearch
+from crawler.repository import DBLPRepository, SemanticScholarRepository
+from crawler.usecase.fetch_papers import FetchRecSysPapers
 
-async def fetch_recsys_papers():
+async def fetch_papers():
     headers = {"User-Agent": "YourBot/1.0"}
-    
-    # DBLPから基本情報を取得
-    async with DBLPSearch(headers) as dblp:
-        papers = await dblp.fetch_papers(conf="recsys", year=2025, h=1000)
-    
-    # Semantic Scholarで充実
-    async with SemanticScholarSearch(headers) as scholar:
-        enriched_papers = await scholar.enrich_papers(papers)
-    
-    return enriched_papers
+    sem = asyncio.Semaphore(5)
 
-asyncio.run(fetch_recsys_papers())
+    async with DBLPRepository(headers) as dblp_repo, \
+               SemanticScholarRepository(headers) as ss_repo:
+        
+        usecase = FetchRecSysPapers(
+            paper_retriever=dblp_repo,
+            paper_enrichers=[ss_repo]
+        )
+        
+        papers = await usecase.execute(year=2025, semaphore=sem)
+        return papers
+
+if __name__ == "__main__":
+    asyncio.run(fetch_papers())
 ```
 
 ## テスト
@@ -209,23 +172,8 @@ asyncio.run(fetch_recsys_papers())
 ### 全テストの実行
 
 ```bash
-uv run pytest -v
+uv run pytest
 ```
-
-### 特定のテストファイルの実行
-
-```bash
-uv run pytest tests/test_semantic_scholar.py -v
-```
-
-### テストカバレッジ
-
-- **DBLP**: 11テスト
-- **Libs (RobotGuard)**: 5テスト
-- **Paper**: 15テスト
-- **SemanticScholar**: 17テスト
-
-**合計: 48テスト**
 
 ## コード品質チェック
 
@@ -253,7 +201,7 @@ make check
 
 - **Domain層**: ビジネスロジックから独立したモデル定義
 - **UseCase層**: ビジネスロジックの実装
-- **Libs層**: 汎用的な共通機能
+- **utils層**: 汎用的な共通機能
 
 ### 非同期処理
 

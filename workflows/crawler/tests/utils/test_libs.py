@@ -1,7 +1,7 @@
 import pytest
 from pytest_mock import MockerFixture
 
-from libs import RobotGuard
+from crawler.utils import RobotGuard
 
 
 @pytest.fixture
