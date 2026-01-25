@@ -59,7 +59,7 @@ class SemanticScholarRepository:
         semaphore: asyncio.Semaphore | None = None,
         overwrite: bool = False,
     ) -> list[Paper]:
-        """論文リストにSemantic Scholarのデータ（Abstract, PDF URL, Title, etc.）を付与します。
+        """論文リストにSemantic Scholarのデータ（Abstract と PDF URL）を付与します。
 
         Args:
             papers: 更新対象の論文リスト
