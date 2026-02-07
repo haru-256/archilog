@@ -53,7 +53,7 @@ class UnpaywallRepository:
     async def enrich_papers(
         self,
         papers: list[Paper],
-        semaphore: asyncio.Semaphore | None = None,
+        semaphore: asyncio.Semaphore,
         overwrite: bool = False,
     ) -> list[Paper]:
         """論文リストにUnpaywallのデータを付与します。
@@ -96,7 +96,7 @@ class UnpaywallRepository:
             if not paper.pdf_url or overwrite:
                 paper.pdf_url = new_url
 
-    async def fetch_by_doi(self, doi: str, sem: asyncio.Semaphore | None = None) -> Paper | None:
+    async def fetch_by_doi(self, doi: str, sem: asyncio.Semaphore) -> Paper | None:
         """DOIを使用して論文データを取得します。
 
         Note:
@@ -110,10 +110,7 @@ class UnpaywallRepository:
         url = f"/{self.PAPER_SEARCH_PATH}/{doi}"
 
         try:
-            if sem:
-                async with sem:
-                    resp = await get_with_retry(self.client, url, params={"email": EMAIL})
-            else:
+            async with sem:
                 resp = await get_with_retry(self.client, url, params={"email": EMAIL})
             resp.raise_for_status()
             data = resp.json()

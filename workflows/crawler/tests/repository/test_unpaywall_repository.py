@@ -1,9 +1,15 @@
+import asyncio
 from typing import Any
 from unittest.mock import MagicMock
 
 import httpx
 import pytest
 from pytest_mock import MockerFixture
+
+
+@pytest.fixture
+def semaphore() -> asyncio.Semaphore:
+    return asyncio.Semaphore(1)
 
 
 @pytest.fixture
@@ -37,6 +43,7 @@ class TestUnpaywallRepository:
         self,
         headers: dict[str, str],
         mock_unpaywall_response: dict[str, Any],
+        semaphore: asyncio.Semaphore,
         mocker: MockerFixture,
     ) -> None:
         """DOIで論文データが正常に取得できること。"""
@@ -52,14 +59,17 @@ class TestUnpaywallRepository:
         )
 
         async with UnpaywallRepository(headers) as repo:
-            result = await repo.fetch_by_doi("10.1145/test")
+            result = await repo.fetch_by_doi("10.1145/test", semaphore)
 
         assert result is not None
         assert result.doi == "10.1145/test"
         assert result.pdf_url == "https://example.com/paper.pdf"
 
     async def test_fetch_paper_not_found(
-        self, headers: dict[str, str], mocker: MockerFixture
+        self,
+        headers: dict[str, str],
+        semaphore: asyncio.Semaphore,
+        mocker: MockerFixture,
     ) -> None:
         """404エラーの場合、Noneが返されること。"""
         from crawler.repository.unpaywall_repository import UnpaywallRepository
@@ -76,7 +86,7 @@ class TestUnpaywallRepository:
         mock_logger = mocker.patch("crawler.repository.unpaywall_repository.logger.debug")
 
         async with UnpaywallRepository(headers) as repo:
-            result = await repo.fetch_by_doi("10.1145/notfound")
+            result = await repo.fetch_by_doi("10.1145/notfound", semaphore)
 
         assert result is None
         mock_logger.assert_called_with(
@@ -84,7 +94,10 @@ class TestUnpaywallRepository:
         )
 
     async def test_fetch_paper_http_error(
-        self, headers: dict[str, str], mocker: MockerFixture
+        self,
+        headers: dict[str, str],
+        semaphore: asyncio.Semaphore,
+        mocker: MockerFixture,
     ) -> None:
         """HTTPエラーの場合、Noneが返されること。"""
         from crawler.repository.unpaywall_repository import UnpaywallRepository
@@ -101,15 +114,17 @@ class TestUnpaywallRepository:
         mock_logger = mocker.patch("crawler.repository.unpaywall_repository.logger.warning")
 
         async with UnpaywallRepository(headers) as repo:
-            result = await repo.fetch_by_doi("10.1145/test")
+            result = await repo.fetch_by_doi("10.1145/test", semaphore)
 
         assert result is None
         mock_logger.assert_called()
 
-    async def test_client_not_initialized(self, headers: dict[str, str]) -> None:
+    async def test_client_not_initialized(
+        self, headers: dict[str, str], semaphore: asyncio.Semaphore
+    ) -> None:
         """コンテキストマネージャー外で呼び出された場合、RuntimeErrorが発生すること。"""
         from crawler.repository.unpaywall_repository import UnpaywallRepository
 
         repo = UnpaywallRepository(headers)
         with pytest.raises(RuntimeError, match="Client is not initialized"):
-            await repo.fetch_by_doi("10.1145/test")
+            await repo.fetch_by_doi("10.1145/test", semaphore)

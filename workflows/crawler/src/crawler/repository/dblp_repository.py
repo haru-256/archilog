@@ -56,8 +56,8 @@ class DBLPRepository:
         self,
         conf: Literal["recsys", "kdd", "wsdm", "www", "sigir", "cikm"],
         year: int,
+        semaphore: asyncio.Semaphore,
         h: int = 1000,
-        semaphore: asyncio.Semaphore | None = None,
     ) -> list[Paper]:
         """指定されたカンファレンスと年度の論文情報を取得します。
 
