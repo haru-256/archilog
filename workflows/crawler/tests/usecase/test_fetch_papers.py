@@ -9,6 +9,11 @@ from crawler.usecase.fetch_papers import FetchRecSysPapers
 
 
 @pytest.fixture
+def semaphore() -> asyncio.Semaphore:
+    return asyncio.Semaphore(5)
+
+
+@pytest.fixture
 def mock_dblp_repo(mocker: MockerFixture) -> MagicMock:
     repo = mocker.MagicMock()
     repo.fetch_papers = mocker.AsyncMock()
@@ -42,6 +47,7 @@ async def test_execute_flow(
     mock_semantic_scholar_repo: MagicMock,
     mock_unpaywall_repo: MagicMock,
     mock_arxiv_repo: MagicMock,
+    semaphore: asyncio.Semaphore,
 ) -> None:
     """RecSysの論文取得フローが正しく実行されることを検証"""
 
@@ -81,15 +87,14 @@ async def test_execute_flow(
     )
 
     year = 2024
-    sem = asyncio.Semaphore(5)
 
-    result = await usecase.execute(year, sem)
+    result = await usecase.execute(year, semaphore)
 
     # 検証
 
     # 1. DBLP Fetch (conf="recsys", year=2024, h=1000)
     mock_dblp_repo.fetch_papers.assert_called_once_with(
-        conf="recsys", year=2024, h=1000, semaphore=sem
+        conf="recsys", year=2024, h=1000, semaphore=semaphore
     )
 
     # 中間でDOIがない論文はフィルタリングされるべき (main.pyのロジックを踏襲)
@@ -100,7 +105,7 @@ async def test_execute_flow(
     mock_semantic_scholar_repo.enrich_papers.assert_called_once()
     args, kwargs = mock_semantic_scholar_repo.enrich_papers.call_args
     assert args[0] == expected_papers_for_enrich
-    assert kwargs["semaphore"] == sem
+    assert kwargs["semaphore"] == semaphore
     assert kwargs["overwrite"] is False
 
     # 3. Unpaywall Enrich

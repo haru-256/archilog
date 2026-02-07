@@ -56,16 +56,16 @@ class DBLPRepository:
         self,
         conf: Literal["recsys", "kdd", "wsdm", "www", "sigir", "cikm"],
         year: int,
+        semaphore: asyncio.Semaphore,
         h: int = 1000,
-        semaphore: asyncio.Semaphore | None = None,
     ) -> list[Paper]:
         """指定されたカンファレンスと年度の論文情報を取得します。
 
         Args:
             conf: 対象カンファレンス名
             year: 対象年度
+            semaphore: 並列実行数を制限するセマフォ
             h: 取得する最大論文数（デフォルト: 1000）
-            sem: 並列実行数を制限するセマフォ（デフォルト: None）
 
         Returns:
             Paperオブジェクトのリスト
@@ -95,10 +95,7 @@ class DBLPRepository:
         try:
             # セマフォを使用してリクエスト並列数を制御
             request_coro = get_with_retry(self.client, self.SEARCH_API, params=params)
-            if semaphore is not None:
-                async with semaphore:
-                    resp = await request_coro
-            else:
+            async with semaphore:
                 resp = await request_coro
 
             resp.raise_for_status()

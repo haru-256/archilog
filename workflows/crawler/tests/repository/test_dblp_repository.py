@@ -1,9 +1,15 @@
+import asyncio
 from typing import Any
 
 import pytest
 from pytest_mock import MockerFixture
 
 from crawler.repository.dblp_repository import DBLPRepository
+
+
+@pytest.fixture
+def semaphore() -> asyncio.Semaphore:
+    return asyncio.Semaphore(1)
 
 
 @pytest.fixture
@@ -108,7 +114,10 @@ def test_parse_authors(headers: dict[str, str]) -> None:
 
 
 async def test_fetch_papers_integration_mock(
-    headers: dict[str, str], mock_dblp_response_data: dict[str, Any], mocker: MockerFixture
+    headers: dict[str, str],
+    mock_dblp_response_data: dict[str, Any],
+    semaphore: asyncio.Semaphore,
+    mocker: MockerFixture,
 ) -> None:
     """fetch_papersメソッドの統合的テスト（APIコールのみモック）"""
     mock_api_response = mocker.MagicMock()
@@ -130,7 +139,7 @@ async def test_fetch_papers_integration_mock(
     mocker.patch("httpx.AsyncClient.aclose")
 
     async with DBLPRepository(headers) as repo:
-        papers = await repo.fetch_papers(conf="recsys", year=2025)
+        papers = await repo.fetch_papers(conf="recsys", year=2025, semaphore=semaphore)
 
     assert len(papers) == 2
     assert papers[0].title == "Test Paper 1"
