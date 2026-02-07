@@ -11,7 +11,11 @@ from crawler.utils.http_utils import get_with_retry
 
 
 class DBLPRepository:
-    """DBLP APIとの通信を担当するリポジトリクラス。"""
+    """DBLP APIとの通信を担当するリポジトリクラス。
+    
+    Note:
+        robots.txtは初回のfetch_papers呼び出し時に自動的にロードされます。
+    """
 
     BASE_URL = "https://dblp.org"
     SEARCH_API = "https://dblp.org/search/publ/api"
