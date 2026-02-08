@@ -15,28 +15,22 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Cache plugin dir
-        id: cache-tflint-plugin
-        uses: actions/cache@v5
-        with:
-          path: ~/.tflint.d/plugins
-          key: tflint-${{ hashFiles('infra/terraform/.tflint.hcl') }}
       - name: Setup TFLint
         uses: terraform-linters/setup-tflint@v6
         with:
           tflint_version: v0.61.0
+          cache: true
       - name: Init TFLint
-        if: steps.cache-tflint-plugin.outputs.cache-hit != 'true'
-        working-directory: infra/terraform
         run: tflint --init
+        working-directory: infra/terraform
         env:
           # https://github.com/terraform-linters/tflint/blob/master/docs/user-guide/plugins.md#avoiding-rate-limiting
           GITHUB_TOKEN: ${{ github.token }}
       - name: Lint with tflint
+        run: tflint --recursive --config "${GITHUB_WORKSPACE}/infra/terraform/.tflint.hcl" -f compact
         working-directory: infra/terraform
-        run: tflint --recursive
       - name: Scan Terraform with Trivy
-        uses: aquasecurity/trivy-action@v0.30.0
+        uses: aquasecurity/trivy-action@0.33.1
         with:
           scan-type: config
           scan-ref: infra/terraform
