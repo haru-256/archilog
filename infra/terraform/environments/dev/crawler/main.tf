@@ -23,4 +23,5 @@ data "google_project" "project" {
 module "tfstate_bucket" {
   source         = "../../../modules/tfstate_gcs_bucket"
   gcp_project_id = data.google_project.project.project_id
+  depends_on     = [module.required_project_services]
 }
