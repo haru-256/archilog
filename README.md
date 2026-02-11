@@ -1,11 +1,10 @@
 # 💎 DevGist
+[![Python CI](https://github.com/haru-256/devgist/actions/workflows/python-ci.yml/badge.svg)](https://github.com/haru-256/devgist/actions/workflows/python-ci.yml)
+[![Terraform CI](https://github.com/haru-256/devgist/actions/workflows/terraform-ci.yml/badge.svg)](https://github.com/haru-256/devgist/actions/workflows/terraform-ci.yml)
 
 <div align="center">
   <img src="docs/images/logo.png" width="500" alt="DevGist logo">
 </div>
-
-[![Python CI](https://github.com/haru-256/devgist/actions/workflows/python-ci.yml/badge.svg)](https://github.com/haru-256/devgist/actions/workflows/python-ci.yml)
-[![Terraform CI](https://github.com/haru-256/devgist/actions/workflows/terraform-ci.yml/badge.svg)](https://github.com/haru-256/devgist/actions/workflows/terraform-ci.yml)
 
 **「理論・実装・キャリアの分断を埋める、MLE/FDEのためのインテリジェンス・プラットフォーム」**
 
