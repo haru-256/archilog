@@ -219,7 +219,8 @@ graph TD
     PullBE <--> Frontend_P
 
     %% 3. Push / Feedback Loop
-    Frontend_P & Frontend_D --> Feedback
+    Frontend_P --> Feedback
+    Frontend_D --> Feedback
     Feedback --> DataPipe
     DataPipe --> DB
     DB --> PrefBatch
