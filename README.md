@@ -4,6 +4,9 @@
   <img src="docs/images/logo.png" width="500" alt="DevGist logo">
 </div>
 
+[![Python CI](https://github.com/haru-256/devgist/actions/workflows/python-ci.yml/badge.svg)](https://github.com/haru-256/devgist/actions/workflows/python-ci.yml)
+[![Terraform CI](https://github.com/haru-256/devgist/actions/workflows/terraform-ci.yml/badge.svg)](https://github.com/haru-256/devgist/actions/workflows/terraform-ci.yml)
+
 **「理論・実装・キャリアの分断を埋める、MLE/FDEのためのインテリジェンス・プラットフォーム」**
 
 DevGistは、論文（Science）、技術ブログ（Engineering）、キャリア情報（Career）を収集・構造化し、エンジニアが「情報の海」で溺れる時間を減らし、「本質的な思考と意思決定」に集中できる世界を作るためのプラットフォームです。
